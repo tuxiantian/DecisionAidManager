@@ -130,6 +130,8 @@ class Checklist(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255), nullable=True)
     mermaid_code = db.Column(db.Text, nullable=True)  # 存储流程图代码
+    is_clone = db.Column(db.Boolean, nullable=True)
+    platform_checklist_id = db.Column(db.Integer, db.ForeignKey('platform_checklist.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=dt.utcnow)
 
 class PlatformChecklist(db.Model):

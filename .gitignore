@@ -1,3 +1,4 @@
 __pycache__/
+temp_diagrams/
 private_key.pem
 public_key.pem
