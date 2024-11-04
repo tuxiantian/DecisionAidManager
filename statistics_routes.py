@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, Blueprint
 from datetime import datetime, timedelta
-from shared_models import db, User, Article, Checklist, AHPHistory, BalancedDecision
+from shared_models import ChecklistDecision, db, User, Article, Checklist, AHPHistory, BalancedDecision
 
 statistics_bp = Blueprint('statistics', __name__)
 
@@ -68,6 +68,27 @@ def get_checklist_statistics():
         "total_checklists": total_checklists,
         "total_clones": total_clones,
         "checklist_trend": checklist_trend_data
+    })
+
+@statistics_bp.route('/api/statistics/checklist_decisions', methods=['GET'])
+def get_checklist_decision_statistics():
+    days = int(request.args.get('days', 30))
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+
+    # 查询总决策数
+    total_decisions = ChecklistDecision.query.count()
+
+    # 查询指定时间范围内的决策趋势
+    decision_trend = db.session.query(
+        db.func.date(ChecklistDecision.created_at), db.func.count(ChecklistDecision.id)
+    ).filter(ChecklistDecision.created_at >= start_date).group_by(db.func.date(ChecklistDecision.created_at)).all()
+
+    decision_trend_data = [{"date": date.isoformat(), "count": count} for date, count in decision_trend]
+
+    return jsonify({
+        "total_decisions": total_decisions,
+        "decision_trend": decision_trend_data
     })
 
 # Example: AHP and BalancedDecision Data Statistics Endpoint
