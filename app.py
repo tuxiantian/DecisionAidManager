@@ -10,6 +10,7 @@ from minio_utils import minio_bp
 from BalancedDecision import balanced_decision_bp
 from mermaid_utils import mermaid_bp
 from statistics_routes import statistics_bp
+from logic_errors import logic_errors_bp
 import pymysql
 from shared_models import AdminUser, db
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -35,6 +36,8 @@ app.register_blueprint(minio_bp)
 app.register_blueprint(balanced_decision_bp)
 app.register_blueprint(mermaid_bp)
 app.register_blueprint(statistics_bp)
+app.register_blueprint(logic_errors_bp)
+
 # 加载 RSA 私钥
 def load_private_key():
     with open("private_key.pem", "rb") as key_file:
