@@ -21,6 +21,28 @@ def get_logic_errors():
         } for error in logic_errors
     ])
 
+@logic_errors_bp.route('/api/logic_errors_page', methods=['GET'])
+def get_logic_errors_page():
+            # 获取查询参数，默认为第一页
+    page = request.args.get('page', 1, type=int)
+    per_page = 10  # 每页显示 5 条记录
+    logic_errors = LogicError.query.paginate(page=page, per_page=per_page, error_out=False)
+    result=[
+        {
+            'id': error.id,
+            'name': error.name,
+            'term': error.term,
+            'description': error.description,
+            'example': error.example
+        } for error in logic_errors
+    ]
+    return jsonify({
+            "status": "success",
+            "data": result,
+            "total_pages": logic_errors.pages,
+            "current_page": logic_errors.page
+    }),200
+
 # 编辑特定的逻辑错误
 @logic_errors_bp.route('/api/logic_errors/<int:id>', methods=['PUT'])
 def update_logic_error(id):
