@@ -205,3 +205,14 @@ class AnalysisData(db.Model):
     opinion = db.Column(db.Text)
     error = db.Column(db.String(255), nullable=False)
     analysis_content = db.relationship('AnalysisContent', backref=db.backref('analysis_data', lazy=True))
+
+class Feedback(db.Model):
+    __tablename__ = 'feedback'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False)  # 反馈用户的ID
+    description = db.Column(db.Text, nullable=False)  # 反馈内容
+    contact_info = db.Column(db.String(255))  # 用户联系方式
+    response = db.Column(db.Text)  # 运营人员的回复
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+    responded_at = db.Column(db.DateTime, nullable=True)  # 运营人员回复时间
+    status = db.Column(db.String(50), default="未回复")  # 状态：已回复/未回复    
