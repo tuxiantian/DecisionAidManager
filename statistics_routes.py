@@ -92,29 +92,40 @@ def get_checklist_decision_statistics():
     })
 
 # Example: AHP and BalancedDecision Data Statistics Endpoint
-@statistics_bp.route('/api/statistics/decision_data', methods=['GET'])
-def get_decision_data_statistics():
+@statistics_bp.route('/api/statistics/ahp_data', methods=['GET'])
+def get_ahp_data_statistics():
     days = int(request.args.get('days', 30))
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
 
     total_ahp_data = AHPHistory.query.count()
-    total_balanced_decision_data = BalancedDecision.query.count()
 
     ahp_trend = db.session.query(
         db.func.date(AHPHistory.created_at), db.func.count(AHPHistory.id)
     ).filter(AHPHistory.created_at >= start_date).group_by(db.func.date(AHPHistory.created_at)).all()
 
+    ahp_trend_data = [{"date": date.isoformat(), "count": count} for date, count in ahp_trend]
+
+    return jsonify({
+        "total_ahp_data": total_ahp_data,
+        "ahp_trend": ahp_trend_data
+    })
+
+@statistics_bp.route('/api/statistics/balanced_decision_data', methods=['GET'])
+def get_balanced_decision_data_statistics():
+    days = int(request.args.get('days', 30))
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+
+    total_balanced_decision_data = BalancedDecision.query.count()
+
     balanced_decision_trend = db.session.query(
         db.func.date(BalancedDecision.created_at), db.func.count(BalancedDecision.id)
     ).filter(BalancedDecision.created_at >= start_date).group_by(db.func.date(BalancedDecision.created_at)).all()
 
-    ahp_trend_data = [{"date": date.isoformat(), "count": count} for date, count in ahp_trend]
     balanced_decision_trend_data = [{"date": date.isoformat(), "count": count} for date, count in balanced_decision_trend]
 
     return jsonify({
-        "total_ahp_data": total_ahp_data,
         "total_balanced_decision_data": total_balanced_decision_data,
-        "ahp_trend": ahp_trend_data,
         "balanced_decision_trend": balanced_decision_trend_data
     })
