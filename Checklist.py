@@ -21,6 +21,7 @@ def get_platform_checklists():
             'id': checklist.id,
             'name': checklist.name,
             'description': checklist.description,
+            'clone_count':checklist.clone_count,
             'version': checklist.version,
             'can_update': True,
             'versions': []  # 初始化子版本列表
@@ -35,6 +36,7 @@ def get_platform_checklists():
                 'id': child.id,
                 'version': child.version,
                 'description': child.description,
+                'clone_count': child.clone_count,
                 'can_update': False
             })
         
