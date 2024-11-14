@@ -43,6 +43,22 @@ def get_logic_errors_page():
             "current_page": logic_errors.page
     }),200
 
+@logic_errors_bp.route('/api/logic_errors', methods=['POST'])
+def add_logic_error():
+    data = request.get_json()
+    
+    name = data.get('name')
+    term = data.get('term')
+    description = data.get('description')
+    example = data.get('example')
+    # 检查必填字段
+    if not name or not term or not description or not example:
+        return jsonify({"error": "Missing required fields"}), 400
+    logic_error = LogicError(name=name, term=term, description=description, example=example)
+    db.session.add(logic_error)
+    db.session.commit()
+    return jsonify({"message": "LogicError add successfully"}), 200
+
 # 编辑特定的逻辑错误
 @logic_errors_bp.route('/api/logic_errors/<int:id>', methods=['PUT'])
 def update_logic_error(id):
