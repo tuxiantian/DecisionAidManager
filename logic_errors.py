@@ -25,8 +25,15 @@ def get_logic_errors():
 def get_logic_errors_page():
     # 获取查询参数，默认为第一页
     page = request.args.get('page', 1, type=int)
+    search = request.args.get('search')
+    query = LogicError.query
+    if search:
+        query = query.filter(
+            (LogicError.name.ilike(f"%{search}%")) |
+            (LogicError.term.ilike(f"%{search}%"))
+        )
     per_page = 10  # 每页显示 5 条记录
-    logic_errors = LogicError.query.paginate(page=page, per_page=per_page, error_out=False)
+    logic_errors = query.order_by(desc(LogicError.id)).paginate(page=page, per_page=per_page, error_out=False)
     result=[
         {
             'id': error.id,
