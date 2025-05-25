@@ -11,10 +11,43 @@ inspiration_bp = Blueprint('inspiration', __name__)
 @login_required  # 需要管理员权限
 def get_all_inspirations():
     try:
-        inspirations = Inspiration.query.order_by(Inspiration.created_at.desc()).all()
+        # 获取查询参数
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        search_term = request.args.get('search', '').strip()
+        content_type = request.args.get('type')  # 'text' 或 'image'
+        
+        # 构建基础查询
+        query = Inspiration.query.order_by(Inspiration.created_at.desc())
+        
+        # 添加搜索条件
+        if search_term:
+            if content_type == 'text':
+                query = query.filter(
+                    Inspiration.type == 'text',
+                    Inspiration.content.ilike(f'%{search_term}%')
+                )
+            elif content_type == 'image':
+                query = query.filter(
+                    Inspiration.type == 'image',
+                    Inspiration.content.ilike(f'%{search_term}%')
+                )
+            else:
+                query = query.filter(
+                    Inspiration.content.ilike(f'%{search_term}%')
+                )
+        
+        # 添加类型过滤
+        if content_type in ['text', 'image']:
+            query = query.filter(Inspiration.type == content_type)
+        
+        # 执行分页查询
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        inspirations = pagination.items
+        
+        # 构建响应数据
         result = []
         for item in inspirations:
-            # 检查是否有感想
             has_reflections = bool(item.reflections)
             result.append({
                 'id': item.id,
@@ -23,7 +56,15 @@ def get_all_inspirations():
                 'created_at': item.created_at.isoformat(),
                 'has_reflections': has_reflections
             })
-        return jsonify(result)
+        
+        return jsonify({
+            'data': result,
+            'total': pagination.total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': pagination.pages
+        })
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
