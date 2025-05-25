@@ -3,7 +3,9 @@ from flask import Blueprint, request, jsonify
 from minio import Minio
 from minio.error import S3Error
 import os
-from werkzeug.utils import secure_filename
+import re
+import time
+from urllib.parse import quote
 
 minio_bp = Blueprint('minio', __name__)
 minio_client = None
@@ -38,6 +40,12 @@ else:
     # MinIO 不可用时的处理，跳过或做替代方案
     pass
 
+def mixed_filename(original_filename):
+    base, ext = os.path.splitext(original_filename)
+    # 保留前10个安全字符（包括中文）
+    safe_base = re.sub(r'[^\w\u4e00-\u9fa5]', '', base)[:10] 
+    timestamp = int(time.time())
+    return f"{timestamp}_{safe_base}{ext}"
 
 @minio_bp.route('/upload', methods=['POST'])
 def upload_file():
@@ -49,8 +57,9 @@ def upload_file():
         return jsonify({'error': 'No selected file'}), 400
 
     # 将文件名安全化
-    filename = secure_filename(file.filename)
-
+    print(file.filename)
+    filename = mixed_filename(file.filename)
+    print(filename)
     try:
         # 将文件保存到 MinIO
         minio_client.put_object(
@@ -62,12 +71,14 @@ def upload_file():
         )
 
         # 生成可访问的 presigned URL
-        file_url = f'http://localhost:5000/files/${filename}'
+        file_url = f'http://localhost:5000/files/{filename}'
 
         return jsonify({'url': file_url}), 200
 
     except S3Error as err:
         return jsonify({'error': str(err)}), 500
+def rfc5987_encode(filename):
+    return "filename*=utf-8''{}".format(quote(filename, safe=''))
 
 @minio_bp.route('/files/<filename>', methods=['GET'])
 def serve_file(filename):
@@ -75,7 +86,7 @@ def serve_file(filename):
         response = minio_client.get_object(BUCKET_NAME, filename)
         return response.data, 200, {
             'Content-Type': response.headers['Content-Type'],
-            'Content-Disposition': f'inline; filename={filename}'
+            'Content-Disposition': f'inline; filename={rfc5987_encode(filename)}'
         }
     except S3Error as err:
         return jsonify({'error': str(err)}), 404
