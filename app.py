@@ -12,6 +12,7 @@ from mermaid_utils import mermaid_bp
 from statistics_routes import statistics_bp
 from logic_errors import logic_errors_bp
 from feedback import feedback_bp
+from inspirations import inspiration_bp
 import pymysql
 from shared_models import AdminUser, db
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -39,6 +40,7 @@ app.register_blueprint(mermaid_bp)
 app.register_blueprint(statistics_bp)
 app.register_blueprint(logic_errors_bp)
 app.register_blueprint(feedback_bp)
+app.register_blueprint(inspiration_bp)
 
 # 加载 RSA 私钥
 def load_private_key():

@@ -217,3 +217,28 @@ class Feedback(db.Model):
     created_at = db.Column(db.DateTime, default=dt.utcnow)
     responded_at = db.Column(db.DateTime, nullable=True)  # 运营人员回复时间
     status = db.Column(db.String(50), default="未回复")  # 状态：已回复/未回复    
+
+class Inspiration(db.Model):
+    """启发内容表"""
+    __tablename__ = 'inspirations'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    type = db.Column(db.String(20), nullable=False)  # 'text' 或 'image'
+    content = db.Column(db.Text, nullable=False)    # 文本内容或图片URL
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+    updated_at = db.Column(db.DateTime, default=dt.utcnow, onupdate=dt.utcnow)
+    
+    # 一对多关系：一个启发内容可以有多个感想
+    reflections = db.relationship('Reflection', backref='inspiration', lazy=True, cascade='all, delete-orphan')
+
+class Reflection(db.Model):
+    """感想内容表"""
+    __tablename__ = 'reflections'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+    updated_at = db.Column(db.DateTime, default=dt.utcnow, onupdate=dt.utcnow)
+    
+    # 外键关联启发内容
+    inspiration_id = db.Column(db.Integer, db.ForeignKey('inspirations.id'), nullable=False)        
