@@ -32,6 +32,7 @@ def get_feedback():
         "id": fb.id,
         "user_id": fb.user_id,
         "description": fb.description,
+        "attachments": fb.attachments,
         "contact_info": fb.contact_info,
         "response": fb.response,
         "created_at": fb.created_at,
@@ -53,7 +54,6 @@ def respond_to_feedback(id):
         return jsonify({"error": "Feedback not found"}), 404
 
     response = request.json.get('response')
-    print(request.json)
     feedback.response = response
     feedback.responded_at = datetime.utcnow()
     feedback.status = "已回复"
