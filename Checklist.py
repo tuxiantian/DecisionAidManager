@@ -1,4 +1,4 @@
-from flask import Flask, abort, request, jsonify, Blueprint
+from flask import Flask, abort, request, jsonify, Blueprint, current_app
 from shared_models import Article, Checklist, AdminUser, PlatformChecklist, PlatformChecklistQuestion, db,  ChecklistQuestion
 from flask_login import current_user,login_required
 
@@ -50,21 +50,25 @@ def get_platform_checklists():
     }), 200
 
 @checklist_bp.route('/platform_checklists', methods=['POST'])
+@login_required
 def create_platform_checklist():
     data = request.get_json()
     name = data.get('name')
     mermaid_code = data.get('mermaid_code')
     description = data.get('description')
     questions = data.get('questions')
-    user_id = data.get('user_id', 1)  # Default user_id to 1 if not provided
 
     if not name or not questions:
         return jsonify({'error': 'Checklist name and questions are required'}), 400
 
-    checklist = PlatformChecklist(user_id=user_id,name=name,mermaid_code=mermaid_code, description=description, version=1)
+    checklist = PlatformChecklist(user_id=current_user.id,name=name,mermaid_code=mermaid_code, description=description, version=1)
     db.session.add(checklist)
     db.session.commit()
 
+    # 临时ID到真实ID的映射
+    id_mapping = {}
+    parent_mapping = {}  # 存储问题与其父问题的关系
+    # 第一遍：创建所有问题（不处理关系）
     for item in questions:
         question_text = item.get('question')
         description_text = item.get('description', '')  # 默认为空字符串
@@ -75,13 +79,47 @@ def create_platform_checklist():
 
         question = PlatformChecklistQuestion(
             checklist_id=checklist.id,
+            type=item.get('type', 'text'),
             question=question_text,
-            description=description_text  # 将描述信息一起保存
+            description=description_text,  # 将描述信息一起保存
+            options=item.get('options', []) if item.get('type') == 'choice' else None
         )
         db.session.add(question)
+        db.session.flush()  # 生成ID但不提交事务
+        
+        if 'tempId' in item:
+            id_mapping[item['tempId']] = question.id
+                # 记录父问题信息
+        if 'parentTempId' in item:
+            parent_mapping[question.id] = item['parentTempId']    
+
+    # 第二遍：建立层级关系
+    for question_id, parent_temp_id in parent_mapping.items():
+        if parent_temp_id in id_mapping:
+            question = PlatformChecklistQuestion.query.get(question_id)
+            question.parent_id = id_mapping[parent_temp_id]
+            
+    # 第三遍：处理选择题的follow-up关系
+    for item in questions:
+        if item.get('type') != 'choice' or 'tempId' not in item:
+            continue
+            
+        question_id = id_mapping[item['tempId']]
+        question = PlatformChecklistQuestion.query.get(question_id)
+        
+        # 处理follow-up问题
+        follow_ups = {}
+        for opt_index, follow_ids in item.get('followUpQuestions', {}).items():
+            if isinstance(follow_ids, list):  # 处理数组形式的follow-up IDs
+                follow_ups[opt_index] = [id_mapping[id] for id in follow_ids if id in id_mapping]
+            elif follow_ids in id_mapping:  # 处理单个ID的情况（向后兼容）
+                follow_ups[opt_index] = [id_mapping[follow_ids]]
+        
+        question.follow_up_questions = follow_ups if follow_ups else None
 
     db.session.commit()
-    return jsonify({'message': 'Checklist created successfully', 'checklist_id': checklist.id}), 201
+    return jsonify({'message': 'Checklist created successfully', 'checklist_id': checklist.id,
+        'id_mapping': id_mapping}), 201
 
 
 @checklist_bp.route('/platform_checklists/<int:checklist_id>', methods=['GET'])
@@ -127,7 +165,10 @@ def get_platform_checklist_details(checklist_id):
 @checklist_bp.route('/platform_checklists/<int:id>', methods=['PUT'])
 def update_platform_checklist(id):
     data = request.get_json()
-    
+    # Validate input
+    if not data.get('name'):
+        return jsonify({'error': 'Checklist name is required'}), 400
+
     # 查询 parent_id 等于参数 id 的最高版本
     latest_checklist = PlatformChecklist.query.filter_by(parent_id=id).order_by(PlatformChecklist.version.desc()).first()
 
@@ -152,6 +193,8 @@ def update_platform_checklist(id):
     db.session.flush()  # 获取新 checklist 的 id
 
     questions = data.get('questions', [])
+    id_mapping = {}  # tempId to real ID mapping
+    parent_mapping = {}  # child question ID to parent tempId
     # 添加问题
     for item in questions:
         question_text = item.get('question')
@@ -163,16 +206,53 @@ def update_platform_checklist(id):
 
         question = PlatformChecklistQuestion(
             checklist_id=new_checklist.id,
+            type=item.get('type', 'text'),
             question=question_text,
-            description=description_text  # 将描述信息一起保存
+            description=description_text,  # 将描述信息一起保存
+            options=item.get('options', []) if item.get('type') == 'choice' else None
+
         )
         db.session.add(question)
+        db.session.flush()
+        # 记录所有可能的ID映射关系
+        if 'tempId' in item:  # 新问题
+            id_mapping[str(item['tempId'])] = question.id
+        
+        # 记录父问题关系
+        if 'parentTempId' in item:
+            parent_mapping[question.id] = str(item['parentTempId'])
+    
+    # Second pass: establish parent-child relationships
+    for question_id, parent_temp_id in parent_mapping.items():
+        if parent_temp_id in id_mapping:
+            question = ChecklistQuestion.query.get(question_id)
+            question.parent_id = id_mapping[parent_temp_id]
+
+    # Third pass: process follow-up questions for choice questions
+    for item in questions:
+        if item.get('type') != 'choice' or 'tempId' not in item:
+            continue
+            
+        question_id = id_mapping[item['tempId']]
+        question = ChecklistQuestion.query.get(question_id)
+        
+        follow_ups = {}
+        for opt_index, follow_ids in item.get('followUpQuestions', {}).items():
+            if isinstance(follow_ids, list):  # 处理数组形式的follow-up IDs
+                follow_ups[opt_index] = [id_mapping[str(id)] for id in follow_ids if str(id) in id_mapping]
+            elif follow_ids in id_mapping:  # 处理单个ID的情况（向后兼容）
+                follow_ups[opt_index] = [id_mapping[follow_ids]]
+        
+        question.follow_up_questions = follow_ups if follow_ups else None
 
     try:
         db.session.commit()
-        return jsonify({'message': 'Checklist updated successfully'}), 200
+        return jsonify({'message': 'Checklist updated successfully',
+            'checklist_id': new_checklist.id,
+            'id_mapping': id_mapping}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"update_platform_checklist failed: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
     
 @checklist_bp.route('/platform_checklists/<int:checklist_id>/delete-with-children', methods=['DELETE'])

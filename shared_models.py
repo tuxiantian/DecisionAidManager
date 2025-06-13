@@ -184,8 +184,16 @@ class ChecklistQuestion(db.Model):
 class PlatformChecklistQuestion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     checklist_id = db.Column(db.Integer, db.ForeignKey('platform_checklist.id'), nullable=False)
+    type = db.Column(db.String(20), default='text')  # 'text' or 'choice'
     question = db.Column(db.String(255), nullable=False)
     description = db.Column(db.String(255), nullable=False)
+    options = db.Column(db.JSON)  # 存储选项列表
+    follow_up_questions = db.Column(db.JSON)  # 存储选项关联 { "0": 5 }
+    parent_id = db.Column(db.Integer, db.ForeignKey('platform_checklist_question.id'))  # 父问题ID
+    # 关系
+    checklist = db.relationship('PlatformChecklist', backref=db.backref('questions', lazy=True))
+    parent = db.relationship('PlatformChecklistQuestion', remote_side=[id], backref='children')
+
 
 class ChecklistAnswer(db.Model):
     id = db.Column(db.Integer, primary_key=True)

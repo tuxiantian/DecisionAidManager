@@ -1,5 +1,5 @@
 import base64
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory, current_app
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user, login_required # type: ignore
 from flask_cors import CORS
 from ahp_routes import ahp_bp
@@ -20,11 +20,43 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
+from logging.handlers import RotatingFileHandler
+import os
+import logging
 pymysql.install_as_MySQLdb()
 
 app = Flask(__name__, static_folder='build', template_folder='build')
 CORS(app, supports_credentials=True)
+def create_app():  
+    # 确保日志目录存在
+    os.makedirs('logs', exist_ok=True)
+    
+    # 文件日志（100MB轮转，保留3个备份）
+    file_handler = RotatingFileHandler(
+        'logs/app.log',
+        maxBytes=1024 * 1024 * 100,
+        backupCount=3
+    )
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    ))
+    
+    # 按环境设置级别
+    app.logger.setLevel(logging.INFO if not app.debug else logging.DEBUG)
+    app.logger.addHandler(file_handler)
+    
+    # 开发环境额外添加彩色控制台日志
+    if app.debug:
+        import colorlog
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(colorlog.ColoredFormatter(
+            '%(log_color)s%(asctime)s - %(levelname)s - %(message)s'
+        ))
+        app.logger.addHandler(stream_handler)
+    
+    return app
 
+create_app()
 # 初始化 Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -69,6 +101,18 @@ def image_files(path):
 @app.route('/<path:path>')
 def serve_react_app(path):
     return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/test-log')
+def test_log():
+    current_app.logger.debug('Debug message')
+    current_app.logger.info('Info message')
+    current_app.logger.warning('Warning message')
+    current_app.logger.error('Error message', exc_info=True)
+    try:
+        1/0
+    except Exception as e:
+        current_app.logger.critical('Critical error', exc_info=True)
+    return "Check your logs"
 
 # 用户加载函数
 @login_manager.user_loader
