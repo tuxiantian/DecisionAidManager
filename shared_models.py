@@ -264,6 +264,7 @@ class Inspiration(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     type = db.Column(db.String(20), nullable=False)  # 'text' 或 'image'
     content = db.Column(db.Text, nullable=False)    # 文本内容或图片URL
+    description = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=dt.utcnow)
     updated_at = db.Column(db.DateTime, default=dt.utcnow, onupdate=dt.utcnow)
     

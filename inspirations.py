@@ -30,7 +30,7 @@ def get_all_inspirations():
             elif content_type == 'image':
                 query = query.filter(
                     Inspiration.type == 'image',
-                    Inspiration.content.ilike(f'%{search_term}%')
+                    Inspiration.description.ilike(f'%{search_term}%')
                 )
             else:
                 query = query.filter(
@@ -53,6 +53,7 @@ def get_all_inspirations():
                 'id': item.id,
                 'type': item.type,
                 'content': item.content,
+                'description': item.description,
                 'created_at': item.created_at.isoformat(),
                 'has_reflections': has_reflections
             })
@@ -79,7 +80,8 @@ def create_inspiration():
     try:
         inspiration = Inspiration(
             type=data['type'],
-            content=data['content']
+            content=data['content'],
+            description=data['description']
         )
         db.session.add(inspiration)
         db.session.commit()
@@ -103,6 +105,7 @@ def update_inspiration(id):
     
     try:
         inspiration.content = data['content']
+        inspiration.description = data['description']
         inspiration.type = data.get('type', inspiration.type)
         db.session.commit()
         return jsonify({
