@@ -1,10 +1,267 @@
 from flask import Flask, abort, request, jsonify, Blueprint, current_app
 from shared_models import Article, Checklist, AdminUser, PlatformChecklist, PlatformChecklistQuestion, db,  ChecklistQuestion
 from flask_login import current_user,login_required
-
+from datetime import datetime as dt
+from sqlalchemy import text
 
 checklist_bp = Blueprint('checklist', __name__)
 
+@checklist_bp.route('/checklists', methods=['GET'])
+@login_required
+def get_checklists():
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+
+    # 查询主版本清单并统计每个清单的决定数量
+    query = db.session.query(
+        Checklist.id,
+        Checklist.name,
+        Checklist.description,
+        Checklist.version
+    )
+    query = query.filter(Checklist.parent_id == None, Checklist.user_id == current_user.id,Checklist.share_status=='review')
+    query = query.group_by(Checklist.id).order_by(Checklist.created_at.desc())
+    
+    # 分页处理
+    paginated_checklists = query.paginate(page=page, per_page=page_size, error_out=False)
+
+    checklist_data = []
+    
+    # 遍历主版本并查询其子版本
+    for checklist in paginated_checklists.items:
+        checklist_info = {
+            'id': checklist.id,
+            'name': checklist.name,
+            'description': checklist.description,
+            'version': checklist.version,
+            'can_update': True,
+            'versions': []  # 初始化子版本列表
+        }
+
+        # 查询当前主版本的子版本及其决定数量
+        child_checklists = db.session.query(
+            Checklist.id,
+            Checklist.version,
+            Checklist.description
+        )
+        child_checklists = child_checklists.filter(Checklist.parent_id == checklist.id).group_by(Checklist.id).all()
+
+        # 将子版本添加到主版本中
+        for child in child_checklists:
+            checklist_info['versions'].append({
+                'id': child.id,
+                'version': child.version,
+                'description': child.description,
+                'can_update': False
+            })
+        
+        checklist_data.append(checklist_info)
+
+    return jsonify({
+        'checklists': checklist_data,
+        'total_pages': paginated_checklists.pages,
+        'current_page': paginated_checklists.page,
+        'total_items': paginated_checklists.total
+    }), 200
+
+@checklist_bp.route('/checklists/<int:checklist_id>', methods=['GET'])
+@login_required
+def get_checklist_details(checklist_id):
+    """
+    获取最新 Checklist 的详细信息。
+    入参 checklist_id 是父版本的 Checklist ID，此接口会自动获取最新版本的数据。
+    """
+
+    # 获取当前 checklist 或返回 404
+    checklist = Checklist.query.get_or_404(checklist_id)
+    if not current_user.id==checklist.user_id:
+        return jsonify({'error': 'You are not allowed to access this Checklist'}), 403
+    # 获取所有相关版本的 Checklist
+    if checklist.parent_id:
+        versions = Checklist.query.filter(
+            (Checklist.parent_id == checklist.parent_id) | (Checklist.id == checklist.parent_id)
+        ).order_by(Checklist.version.desc()).all()
+    else:
+        versions = Checklist.query.filter(
+            (Checklist.parent_id == checklist.id) | (Checklist.id == checklist.id)
+        ).order_by(Checklist.version.desc()).all()
+
+    # 找到最新版本的 Checklist
+    latest_version = versions[0]  # 因为已按版本降序排序，第一个即为最新版本
+
+    # 获取最新版本的 ChecklistQuestion
+    questions = ChecklistQuestion.query.filter_by(checklist_id=latest_version.id).all()
+    questions_data = [{'id': question.id,'type':question.type, 'question': question.question, 'description': question.description,'options': question.options,'follow_up_questions': question.follow_up_questions,'parent_id': question.parent_id} for question in questions]
+
+    # 版本信息数据
+    versions_data = [{'id': version.id, 'version': version.version} for version in versions]
+
+    return jsonify({
+        'id': latest_version.id,
+        'name': latest_version.name,
+        'mermaid_code': latest_version.mermaid_code,
+        'description': latest_version.description,
+        'version': latest_version.version,
+        'questions': questions_data,
+        'versions': versions_data
+    }), 200
+        
+@checklist_bp.route('/checklists/review', methods=['POST'])
+@login_required
+def handle_review_checklist():
+    try:
+        data = request.get_json()
+        checklist_id = data.get('checklist_id')
+        action = data.get('action')  # 'approve' or 'reject'
+        comment = data.get('comment', '')
+        
+        if not checklist_id or action not in ('approve', 'reject'):
+            return jsonify({"error": "Invalid parameters"}), 400
+
+        # 使用锁避免并发问题
+        with db.session.begin_nested():
+            checklist = Checklist.query.filter_by(
+                id=checklist_id,
+                share_status='review'  # 只能审核待审核状态的清单
+            ).with_for_update().first()
+            
+            if not checklist:
+                return jsonify({"error": "Checklist not found or not in reviewable state"}), 404
+            
+            if action == 'approve':
+                # 克隆到平台推荐清单
+                platform_checklist = PlatformChecklist(
+                    version=1,
+                    name=checklist.name,
+                    user_id=current_user.id,
+                    description=checklist.description,
+                    mermaid_code=checklist.mermaid_code,
+                    created_at=dt.utcnow(),
+                    clone_count=0
+                )
+                db.session.add(platform_checklist)
+                db.session.flush()  # 获取新创建的ID
+                
+                # 克隆问题
+                questions = ChecklistQuestion.query.filter_by(
+                    checklist_id=checklist.id
+                ).all()
+                
+                if questions:
+                    clone_questions(platform_checklist.id, questions)
+                
+                # 更新原清单状态
+                checklist.share_status = 'approved'
+                checklist.reviewed_at = dt.utcnow()
+                checklist.review_comment = comment
+                
+                response_data = {
+                    "message": "Checklist approved and published to platform",
+                    "platform_checklist_id": platform_checklist.id
+                }
+            else:
+                # 拒绝
+                checklist.share_status = 'rejected'
+                checklist.reviewed_at = dt.utcnow()
+                checklist.review_comment = comment
+                
+                response_data = {"message": "Checklist rejected"}
+        
+        db.session.commit()
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Review failed: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Review failed: {str(e)}"}), 500
+
+def clone_questions(platform_checklist_id, questions):
+    # 准备批量插入数据
+    questions_to_create = []
+    id_mapping = {}  # 原始ID -> 新ID索引
+    parent_mapping = {}  # 新ID索引 -> 原始父ID
+    follow_up_mapping = {}  # 原始问题ID -> follow_up_questions
+
+    # 收集问题数据和关系
+    for question in questions:
+        # 记录原始问题ID对应的索引位置
+        orig_id = question.id
+        idx = len(questions_to_create)
+        id_mapping[orig_id] = idx
+        
+        # 记录父关系（如果有）
+        if question.parent_id:
+            parent_mapping[idx] = question.parent_id
+        
+        # 记录follow_up关系（如果有）
+        if question.follow_up_questions:
+            follow_up_mapping[orig_id] = question.follow_up_questions
+        
+        # 准备问题数据
+        question_data = {
+            'checklist_id': platform_checklist_id,
+            'type': question.type,
+            'question': question.question,
+            'description': question.description,
+            'options': question.options.copy() if question.options else None
+        }
+        questions_to_create.append(question_data)
+    
+    # 批量插入问题
+    db.session.bulk_insert_mappings(PlatformChecklistQuestion, questions_to_create)
+    db.session.flush()
+    
+    # 获取批量生成的ID（MySQL版本）
+    result = db.session.execute(text("SELECT LAST_INSERT_ID()"))
+    first_id = result.scalar()
+    
+    # 计算所有生成的ID
+    question_ids = [first_id + i for i in range(len(questions_to_create))]
+    
+    # 构建真实ID映射 {原始ID: 新ID}
+    real_id_mapping = {}
+    for orig_id, idx in id_mapping.items():
+        real_id_mapping[orig_id] = question_ids[idx]
+    
+    # 批量更新父关系
+    parent_updates = []
+    for idx, parent_orig_id in parent_mapping.items():
+        if parent_orig_id in real_id_mapping:
+            parent_updates.append({
+                'id': question_ids[idx],
+                'parent_id': real_id_mapping[parent_orig_id]
+            })
+    
+    if parent_updates:
+        db.session.bulk_update_mappings(PlatformChecklistQuestion, parent_updates)
+    
+    # 批量更新follow-up关系
+    follow_up_updates = []
+    for orig_id, follow_dict in follow_up_mapping.items():
+        if orig_id not in real_id_mapping:
+            continue
+            
+        new_question_id = real_id_mapping[orig_id]
+        processed_follow_ups = {}
+        
+        for opt_index, child_ids in follow_dict.items():
+            # 映射每个子问题的ID
+            new_child_ids = [real_id_mapping[child_id] for child_id in child_ids 
+                           if child_id in real_id_mapping]
+            if new_child_ids:
+                processed_follow_ups[opt_index] = new_child_ids
+        
+        if processed_follow_ups:
+            follow_up_updates.append({
+                'id': new_question_id,
+                'follow_up_questions': processed_follow_ups
+            })
+    
+    if follow_up_updates:
+        db.session.bulk_update_mappings(PlatformChecklistQuestion, follow_up_updates)
+    
+    return real_id_mapping
+    
 @checklist_bp.route('/platform_checklists', methods=['GET'])
 def get_platform_checklists():
     page = request.args.get('page', 1, type=int)

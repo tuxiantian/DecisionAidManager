@@ -163,6 +163,12 @@ class Checklist(db.Model):
     is_clone = db.Column(db.Boolean, nullable=True)
     platform_checklist_id = db.Column(db.Integer, db.ForeignKey('platform_checklist.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=dt.utcnow)
+    share_status = db.Column(db.Enum('pending', 'review', 'approved', 'rejected', 
+                                  name='checklist_share_status'),
+                           default='pending', nullable=False)
+    share_requested_at = db.Column(db.DateTime)
+    reviewed_at = db.Column(db.DateTime)
+    review_comment = db.Column(db.Text)
 
 class PlatformChecklist(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -178,8 +184,15 @@ class PlatformChecklist(db.Model):
 class ChecklistQuestion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     checklist_id = db.Column(db.Integer, db.ForeignKey('checklist.id'), nullable=False)
+    type = db.Column(db.String(20), default='text')  # 'text' or 'choice'
     question = db.Column(db.String(255), nullable=False)
     description = db.Column(db.String(255), nullable=False)
+    options = db.Column(db.JSON)  # 存储选项列表
+    follow_up_questions = db.Column(db.JSON)  # 存储选项关联 { "0": 5 }
+    parent_id = db.Column(db.Integer, db.ForeignKey('checklist_question.id'))  # 父问题ID
+    # 关系
+    checklist = db.relationship('Checklist', backref=db.backref('questions', lazy=True))
+    parent = db.relationship('ChecklistQuestion', remote_side=[id], backref='children')
 
 class PlatformChecklistQuestion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
