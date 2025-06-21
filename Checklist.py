@@ -387,23 +387,23 @@ def get_platform_checklist_details(checklist_id):
     """
 
     # 获取当前 checklist 或返回 404
-    checklist = Checklist.query.get_or_404(checklist_id)
+    checklist = PlatformChecklist.query.get_or_404(checklist_id)
 
     # 获取所有相关版本的 Checklist
     if checklist.parent_id:
-        versions = Checklist.query.filter(
-            (Checklist.parent_id == checklist.parent_id) | (Checklist.id == checklist.parent_id)
-        ).order_by(Checklist.version.desc()).all()
+        versions = PlatformChecklist.query.filter(
+            (PlatformChecklist.parent_id == checklist.parent_id) | (PlatformChecklist.id == checklist.parent_id)
+        ).order_by(PlatformChecklist.version.desc()).all()
     else:
-        versions = Checklist.query.filter(
-            (Checklist.parent_id == checklist.id) | (Checklist.id == checklist.id)
-        ).order_by(Checklist.version.desc()).all()
+        versions = PlatformChecklist.query.filter(
+            (PlatformChecklist.parent_id == checklist.id) | (PlatformChecklist.id == checklist.id)
+        ).order_by(PlatformChecklist.version.desc()).all()
 
     # 找到最新版本的 Checklist
     latest_version = versions[0]  # 因为已按版本降序排序，第一个即为最新版本
 
     # 获取最新版本的 ChecklistQuestion
-    questions = ChecklistQuestion.query.filter_by(checklist_id=latest_version.id).all()
+    questions = PlatformChecklistQuestion.query.filter_by(checklist_id=latest_version.id).all()
     questions_data = [{'id': question.id, 'question': question.question, 'description': question.description} for question in questions]
 
     # 版本信息数据
