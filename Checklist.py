@@ -10,6 +10,9 @@ checklist_bp = Blueprint('checklist', __name__)
 @checklist_bp.route('/checklists', methods=['GET'])
 @login_required
 def get_checklists():
+    """
+    查询审核中的用户分享的决策清单
+    """
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 10, type=int)
 
@@ -18,48 +21,27 @@ def get_checklists():
         Checklist.id,
         Checklist.name,
         Checklist.description,
-        Checklist.version
+        Checklist.version,
+        Checklist.share_status,
+        Checklist.share_requested_at
     )
-    query = query.filter(Checklist.parent_id == None, Checklist.user_id == current_user.id,Checklist.share_status=='review')
+    query = query.filter(Checklist.share_status=='review')
     query = query.group_by(Checklist.id).order_by(Checklist.created_at.desc())
     
     # 分页处理
     paginated_checklists = query.paginate(page=page, per_page=page_size, error_out=False)
-
-    checklist_data = []
-    
-    # 遍历主版本并查询其子版本
-    for checklist in paginated_checklists.items:
-        checklist_info = {
-            'id': checklist.id,
-            'name': checklist.name,
-            'description': checklist.description,
-            'version': checklist.version,
-            'can_update': True,
-            'versions': []  # 初始化子版本列表
-        }
-
-        # 查询当前主版本的子版本及其决定数量
-        child_checklists = db.session.query(
-            Checklist.id,
-            Checklist.version,
-            Checklist.description
-        )
-        child_checklists = child_checklists.filter(Checklist.parent_id == checklist.id).group_by(Checklist.id).all()
-
-        # 将子版本添加到主版本中
-        for child in child_checklists:
-            checklist_info['versions'].append({
-                'id': child.id,
-                'version': child.version,
-                'description': child.description,
-                'can_update': False
-            })
-        
-        checklist_data.append(checklist_info)
+    # 将查询结果转换为字典列表
+    checklists = [{
+        'id': item.id,
+        'name': item.name,
+        'description': item.description,
+        'version': item.version,
+        'share_status': item.share_status,
+        'share_requested_at': item.share_requested_at.isoformat() if item.share_requested_at else None
+    } for item in paginated_checklists.items]
 
     return jsonify({
-        'checklists': checklist_data,
+        'checklists': checklists,
         'total_pages': paginated_checklists.pages,
         'current_page': paginated_checklists.page,
         'total_items': paginated_checklists.total
