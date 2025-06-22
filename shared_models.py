@@ -179,7 +179,14 @@ class PlatformChecklist(db.Model):
     description = db.Column(db.String(255), nullable=True)
     mermaid_code = db.Column(db.Text, nullable=True)  # 存储流程图代码
     clone_count = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.DateTime, default=dt.utcnow)    
+    created_at = db.Column(db.DateTime, default=dt.utcnow)
+    @property
+    def serialized(self):
+        data = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        # 特殊处理 datetime 字段
+        if 'created_at' in data and data['created_at']:
+            data['created_at'] = data['created_at'].isoformat()
+        return data    
 
 class ChecklistQuestion(db.Model):
     id = db.Column(db.Integer, primary_key=True)

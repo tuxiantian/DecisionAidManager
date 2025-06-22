@@ -3,6 +3,7 @@ from shared_models import Article, Checklist, AdminUser, PlatformChecklist, Plat
 from flask_login import current_user,login_required
 from datetime import datetime as dt
 from sqlalchemy import text
+import json
 
 checklist_bp = Blueprint('checklist', __name__)
 
@@ -401,7 +402,7 @@ def get_platform_checklist_details(checklist_id):
 
     # 找到最新版本的 Checklist
     latest_version = versions[0]  # 因为已按版本降序排序，第一个即为最新版本
-
+    #print(json.dumps(latest_version.serialized, indent=4, ensure_ascii=False))
     # 获取最新版本的 ChecklistQuestion
     questions = PlatformChecklistQuestion.query.filter_by(checklist_id=latest_version.id).all()
     questions_data = [{'id': question.id, 'question': question.question, 'description': question.description} for question in questions]
