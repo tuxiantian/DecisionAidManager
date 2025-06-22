@@ -51,42 +51,27 @@ def get_checklists():
 @login_required
 def get_checklist_details(checklist_id):
     """
-    获取最新 Checklist 的详细信息。
-    入参 checklist_id 是父版本的 Checklist ID，此接口会自动获取最新版本的数据。
+    获取指定 Checklist 的详细信息。
+    入参 checklist_id 是具体要获取的 Checklist ID。
     """
 
     # 获取当前 checklist 或返回 404
     checklist = Checklist.query.get_or_404(checklist_id)
     if not current_user.id==checklist.user_id:
         return jsonify({'error': 'You are not allowed to access this Checklist'}), 403
-    # 获取所有相关版本的 Checklist
-    if checklist.parent_id:
-        versions = Checklist.query.filter(
-            (Checklist.parent_id == checklist.parent_id) | (Checklist.id == checklist.parent_id)
-        ).order_by(Checklist.version.desc()).all()
-    else:
-        versions = Checklist.query.filter(
-            (Checklist.parent_id == checklist.id) | (Checklist.id == checklist.id)
-        ).order_by(Checklist.version.desc()).all()
-
-    # 找到最新版本的 Checklist
-    latest_version = versions[0]  # 因为已按版本降序排序，第一个即为最新版本
 
     # 获取最新版本的 ChecklistQuestion
-    questions = ChecklistQuestion.query.filter_by(checklist_id=latest_version.id).all()
+    questions = ChecklistQuestion.query.filter_by(checklist_id=checklist_id).all()
     questions_data = [{'id': question.id,'type':question.type, 'question': question.question, 'description': question.description,'options': question.options,'follow_up_questions': question.follow_up_questions,'parent_id': question.parent_id} for question in questions]
 
-    # 版本信息数据
-    versions_data = [{'id': version.id, 'version': version.version} for version in versions]
 
     return jsonify({
-        'id': latest_version.id,
-        'name': latest_version.name,
-        'mermaid_code': latest_version.mermaid_code,
-        'description': latest_version.description,
-        'version': latest_version.version,
-        'questions': questions_data,
-        'versions': versions_data
+        'id': checklist.id,
+        'name': checklist.name,
+        'mermaid_code': checklist.mermaid_code,
+        'description': checklist.description,
+        'version': checklist.version,
+        'questions': questions_data
     }), 200
         
 @checklist_bp.route('/checklists/review', methods=['POST'])
