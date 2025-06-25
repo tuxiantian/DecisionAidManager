@@ -89,7 +89,8 @@ ALLOWED_EXTENSIONS = {
     'article': {'jpg', 'jpeg', 'png'},
     'feedback': {'jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx'},
     'inspiration': {'jpg', 'jpeg', 'png'},
-    'reflection': {'jpg', 'jpeg', 'png'}
+    'reflection': {'jpg', 'jpeg', 'png'},
+    'review': {'jpg', 'jpeg', 'png'}
 }
 
 def allowed_file(filename, business_type):
