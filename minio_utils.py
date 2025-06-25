@@ -107,7 +107,8 @@ def upload_file():
         'article': 'article/',
         'feedback': 'feedback/',
         'inspiration': 'inspiration/',
-        'reflection': 'reflection/'
+        'reflection': 'reflection/',
+        'review': 'review/'
     }
     
     # 验证业务类型
